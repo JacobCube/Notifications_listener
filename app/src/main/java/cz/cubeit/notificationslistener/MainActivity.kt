@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
     private lateinit var instanceDB: NotificationDatabase
     private var cacheNotifications = mutableListOf<ReceivedNotification>()
     private var cacheNotificationsBackUp = mutableListOf<ReceivedNotification>()
-    private var currentFilter = "All"
+    private var activeFilter = "All"
 
     /***
      * zpracování ikon z uložených notifikací
@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
      * nové notifikace -> šance nového packageName
      */
     private fun invalidateSpinnerAdapter() {
-        val list = cacheNotifications.map { it.packageName }.toMutableList()
+        val list = cacheNotificationsBackUp.map { it.packageName }.toMutableList()
         list.add("All")
         val listPackageName = list.sorted().distinct()
         spinnerPackageName.apply {
@@ -101,7 +101,7 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                     val packageName = listPackageName[position]
                     Log.d("onItemSelected", packageName)
-                    if(currentFilter != packageName) {
+                    if(activeFilter != packageName) {
                         cacheNotifications.clear()
                         cacheNotifications.addAll(cacheNotificationsBackUp)
 
@@ -109,13 +109,16 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
                         if(position != 0) {
                             cacheNotifications = cacheNotifications.filter { it.packageName == list.sorted().distinct()[position]}.toMutableList()
                         }
-                        (recyclerViewNotifications.adapter as NotificationAdapter).refresh(cacheNotifications, cacheNotifications.getBitmaps(resources))
-                        currentFilter = packageName
+                        (recyclerViewNotifications.adapter as NotificationAdapter).refresh(
+                            cacheNotifications,
+                            cacheNotifications.getBitmaps(resources)
+                        )
+                        activeFilter = packageName
                     }
                 }
             }
         }
-        spinnerPackageName.setSelection(listPackageName.indexOf(currentFilter))
+        spinnerPackageName.setSelection(listPackageName.indexOf(activeFilter))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -137,6 +140,7 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
             it.setHasStableIds(true)
         }
         recyclerViewNotifications.apply {
+            setHasFixedSize(false)
             layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.VERTICAL, false)
             adapter = notificationAdapter
         }
@@ -156,7 +160,10 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
             uiThread {
                 Log.d("cacheNotifications", cacheNotifications.toString())
                 invalidateSpinnerAdapter()
-                (recyclerViewNotifications.adapter as NotificationAdapter).refresh(cacheNotifications, cacheNotifications.getBitmaps(resources))
+                (recyclerViewNotifications.adapter as NotificationAdapter).refresh(
+                    cacheNotifications,
+                    cacheNotifications.getBitmaps(resources)
+                )
             }
         }
 
@@ -191,10 +198,17 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
      * nově příchozí notifikace
      */
     override fun addNotification(notification: ReceivedNotification) {
-        cacheNotifications.add(0, notification)
+        ///bug fix: aktivní filtr s nově příchozí notifikací
+        if(activeFilter == notification.packageName || activeFilter == "All") {
+            cacheNotifications.add(0, notification)
+
+            (recyclerViewNotifications.adapter as NotificationAdapter).refresh(
+                cacheNotifications,
+                cacheNotifications.getBitmaps(resources)
+            )
+        }
+
         cacheNotificationsBackUp.add(0, notification)
-        Log.d("addNotification", "triggered")
-        (recyclerViewNotifications.adapter as NotificationAdapter).refresh(cacheNotifications, cacheNotifications.getBitmaps(resources))
         invalidateSpinnerAdapter()
     }
 
@@ -208,7 +222,7 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
     }
 
     /***
-     * adapter pro RecyclerView
+     * adaptér pro RecyclerView
      */
     private class NotificationAdapter(
         val notifications: MutableList<ReceivedNotification>,
@@ -228,7 +242,16 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
 
         override fun getItemCount(): Int = notifications.size
 
-        fun refresh(listNotifications: List<ReceivedNotification>, listBitmap: List<Bitmap>) {
+        fun refresh(
+            listNotifications: List<ReceivedNotification>,
+            listBitmap: List<Bitmap>
+        ) {
+            /*if(singular) {
+                notifications.add(0, listNotifications.first())
+                notifyItemInserted(0)
+            }else {
+
+            }*/
             notifications.clear()
             notifications.addAll(listNotifications)
             bitmaps.clear()
