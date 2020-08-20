@@ -42,8 +42,8 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
     //private lateinit var recyclerView: RecyclerView
     //private lateinit var spinner: Spinner
     private lateinit var instanceDB: NotificationDatabase
-    private var cacheNotifications = mutableListOf<ReceivedNotification>()
-    private var cacheNotificationsBackUp = mutableListOf<ReceivedNotification>()
+    private val cacheNotifications = mutableListOf<ReceivedNotification>()
+    private val cacheNotificationsBackUp = mutableListOf<ReceivedNotification>()
     private var activeFilter = "All"
 
     /***
@@ -53,9 +53,11 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
     private fun List<ReceivedNotification>.getBitmaps(resources: Resources): List<Bitmap> {
         val res = mutableListOf<Bitmap>()
         for(i in this) {
-            res.add(if(i.icon == null){
-                BitmapFactory.decodeResource(resources, android.R.drawable.sym_def_app_icon)
-            }else BitmapFactory.decodeByteArray(i.icon, 0, i.icon.size))
+            res.add(
+                if (i.icon == null) {
+                    BitmapFactory.decodeResource(resources, android.R.drawable.sym_def_app_icon)
+                } else BitmapFactory.decodeByteArray(i.icon, 0, i.icon.size)
+            )
         }
         return res
     }
@@ -98,17 +100,27 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
                 override fun onNothingSelected(parent: AdapterView<*>?) {
                 }
 
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long
+                ) {
                     val packageName = listPackageName[position]
                     Log.d("onItemSelected", packageName)
                     if(activeFilter != packageName) {
                         cacheNotifications.clear()
-                        cacheNotifications.addAll(cacheNotificationsBackUp)
 
                         Log.d("onItemSelected inner", position.toString())
-                        if(position != 0) {
-                            cacheNotifications = cacheNotifications.filter { it.packageName == list.sorted().distinct()[position]}.toMutableList()
-                        }
+                        cacheNotifications.addAll(
+                            if (position != 0) {
+                                cacheNotificationsBackUp.filter {
+                                    it.packageName == list.sorted().distinct()[position]
+                                }.toMutableList()
+                            } else {
+                                cacheNotificationsBackUp
+                            }
+                        )
                         (recyclerViewNotifications.adapter as NotificationAdapter).refresh(
                             cacheNotifications,
                             cacheNotifications.getBitmaps(resources)
@@ -136,26 +148,46 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
         /***
          * RecyclerView inicializace
          */
-        val notificationAdapter = NotificationAdapter(cacheNotifications, resources).also {
-            it.setHasStableIds(true)
-        }
-        recyclerViewNotifications.apply {
-            setHasFixedSize(false)
-            layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.VERTICAL, false)
-            adapter = notificationAdapter
+        val notificationAdapter = NotificationAdapter(cacheNotifications, resources)
+        notificationAdapter.apply {
+            this.setHasStableIds(true)
+            registerAdapterDataObserver( object : RecyclerView.AdapterDataObserver() {
+                override fun onItemRangeInserted(
+                    positionStart: Int,
+                    itemCount: Int
+                ) {
+                    recyclerViewNotifications.scrollToPosition(0)
+                }
+
+                override fun onItemRangeRemoved(
+                    positionStart: Int,
+                    itemCount: Int
+                ) {
+                    recyclerViewNotifications.smoothScrollToPosition(itemCount)
+                }
+            })
         }
 
-        /***
-         * Spinner (ComboBox) inicializace
-         */
-        //spinner = spinnerPackageName
+        recyclerViewNotifications.apply {
+            setHasFixedSize(true)
+            adapter = notificationAdapter
+            layoutManager = LinearLayoutManager(
+                this@MainActivity,
+                LinearLayoutManager.VERTICAL,
+                false
+            )
+            /*if (itemAnimator is SimpleItemAnimator) {
+                (itemAnimator as SimpleItemAnimator).supportsChangeAnimations = false
+            }*/
+        }
 
         /***
          * vytvoření instance databáze a náčet všech lokálně uložených dat
          */
         doAsync {
             instanceDB = NotificationDatabase.getInstance(this@MainActivity)
-            cacheNotifications = instanceDB.notificationDao().getAll().sortedByDescending { it.millis }.toMutableList()
+            cacheNotifications.addAll(
+                instanceDB.notificationDao().getAll().sortedByDescending { it.millis })
             cacheNotificationsBackUp.addAll(cacheNotifications)
             uiThread {
                 Log.d("cacheNotifications", cacheNotifications.toString())
@@ -204,7 +236,8 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
 
             (recyclerViewNotifications.adapter as NotificationAdapter).refresh(
                 cacheNotifications,
-                cacheNotifications.getBitmaps(resources)
+                cacheNotifications.getBitmaps(resources),
+                true
             )
         }
 
@@ -225,7 +258,8 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
      * adaptér pro RecyclerView
      */
     private class NotificationAdapter(
-        val notifications: MutableList<ReceivedNotification>,
+        val
+        notifications: MutableList<ReceivedNotification>,
         val resources: Resources
     ) : RecyclerView.Adapter<NotificationAdapter.NotificationViewHolder>() {
         var inflater: View? = null
@@ -240,34 +274,44 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
             inflater: View
         ): RecyclerView.ViewHolder(inflater)
 
-        override fun getItemCount(): Int = notifications.size
+        override fun getItemCount(): Int {
+            Log.d("getItemCount", notifications.size.toString())
+            return notifications.size
+        }
 
         fun refresh(
             listNotifications: List<ReceivedNotification>,
-            listBitmap: List<Bitmap>
+            listBitmap: List<Bitmap>,
+            singular: Boolean = false
         ) {
-            /*if(singular) {
-                notifications.add(0, listNotifications.first())
-                notifyItemInserted(0)
-            }else {
-
-            }*/
-            notifications.clear()
-            notifications.addAll(listNotifications)
             bitmaps.clear()
             bitmaps.addAll(listBitmap)
-            notifyDataSetChanged()
+            if(singular) {
+                //notifications.add(0, listNotifications.first())
+                notifyItemInserted(0)
+            }else {
+                notifyDataSetChanged()
+            }
+
+            /*notifications.clear()
+            notifications.addAll(listNotifications)*/
+            Log.d("listNotifications", listNotifications.size.toString())
+            Log.d("notifications", notifications.size.toString())
         }
 
         /***
          * vnitřní unikátní identifikátor
          */
-        override fun getItemId(position: Int): Long = position.toLong()
+        override fun getItemId(position: Int): Long = notifications[position].millis
 
-        override fun getItemViewType(position: Int): Int = position
+        override fun getItemViewType(position: Int): Int = 1
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): NotificationViewHolder {
-            inflater = LayoutInflater.from(parent.context).inflate(R.layout.row_notification, parent, false)
+            inflater = LayoutInflater.from(parent.context).inflate(
+                R.layout.row_notification,
+                parent,
+                false
+            )
             inflater?.setOnClickListener {
 
             }
@@ -277,7 +321,11 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
                 inflater!!.textViewTitle,
                 inflater!!.textViewText,
                 inflater!!.textViewPackageName,
-                inflater ?: LayoutInflater.from(parent.context).inflate(R.layout.row_notification, parent, false)
+                inflater ?: LayoutInflater.from(parent.context).inflate(
+                    R.layout.row_notification,
+                    parent,
+                    false
+                )
             )
         }
 
@@ -287,7 +335,11 @@ class MainActivity : AppCompatActivity(), NotificationReceiver {
         override fun onBindViewHolder(viewHolder: NotificationViewHolder, position: Int) {
             with(notifications[position]) {
                 viewHolder.packageName.text = packageName
-                viewHolder.postTime.text = resources.getString(R.string.notification_postTime, time, date)
+                viewHolder.postTime.text = resources.getString(
+                    R.string.notification_postTime,
+                    time,
+                    date
+                )
                 viewHolder.text.text = text
                 viewHolder.title.text = title
                 viewHolder.icon.setImageBitmap(bitmaps[position])

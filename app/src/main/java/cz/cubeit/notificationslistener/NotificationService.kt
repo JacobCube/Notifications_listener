@@ -1,6 +1,7 @@
 package cz.cubeit.notificationslistener
 
 import android.R.attr.bitmap
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -23,6 +24,7 @@ import kotlin.random.Random
  * viz. registrace služby v AndroidManifest.xml (android.intent.action.BOOT_COMPLETED)
  */
 class BootBroadcastReceiver : BroadcastReceiver() {
+    @SuppressLint("UnsafeProtectedBroadcastReceiver")
     override fun onReceive(context: Context, intent: Intent) {
         val startServiceIntent = Intent(context, NotificationService::class.java)
         context.startService(startServiceIntent)
@@ -61,7 +63,6 @@ class NotificationService : NotificationListenerService() {
      * voláno při nové notifikaci
      */
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        super.onNotificationPosted(sbn)
         val bitmapdata: ByteArray? = if(Build.VERSION.SDK_INT >= 23) {
             val bitmap = sbn.notification.smallIcon.loadDrawable(this).toBitmap()
             val stream = ByteArrayOutputStream()
@@ -96,7 +97,6 @@ class NotificationService : NotificationListenerService() {
      * odstranění notifikace ze status bar(u)
      */
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
-        super.onNotificationRemoved(sbn)
         val readId = (if(Build.VERSION.SDK_INT >= 29){
             sbn.uid
         } else sbn.id)
